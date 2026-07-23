@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"golang.design/x/clipboard"
 
 	"github.com/Danyiyk/FunCodex/internal/decoder"
 	"github.com/Danyiyk/FunCodex/internal/encoder"
@@ -16,10 +17,16 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// print help message
 func PrintHelp() {
 	fmt.Println("Registered charmaps", len(utils.RegisteredCharmaps))
 	fmt.Println("Available commands:\n -l(ength) [text]\n -c(rypt) [text] [hidden_text]\n -d(ecrypt) [crypted_text]")
+}
+
+func copyToClipboard(text string) {
+	data := []byte(text)
+	
+	clipboard.Write(clipboard.FmtText, data)
+	
 }
 
 type model struct {
@@ -132,9 +139,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					text := strings.TrimSpace(parts[0])
 					hiddenText := strings.TrimSpace(parts[1])
 					encodedResult := encoder.Encode(text, hiddenText)
+
+					// copy result to clipboard (primary and standard)
+					copyToClipboard(encodedResult)
+
 					response = fmt.Sprintf("encrypted: %s", encodedResult)
 				}
-
 			case "decrypt":
 				decodedResult := decoder.Decode(val)
 				response = fmt.Sprintf("decrypted: %s", decodedResult)
@@ -177,6 +187,9 @@ func (m model) View() string {
 }
 
 func main() {
+	if err := clipboard.Init(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to init clipboard: %v\n", err)
+	}
 	// run tui if no flags passed
 	if len(os.Args) == 1 {
 		p := tea.NewProgram(initialModel(), tea.WithAltScreen())
