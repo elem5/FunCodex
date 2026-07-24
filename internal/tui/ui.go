@@ -124,6 +124,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// process input based on mode
 		case "enter":
 			val := strings.TrimSpace(m.textarea.Value())
+			m.messages = append(m.messages, m.senderStyle.Render("You: ")+m.textarea.Value())
 			if val == "" {
 				return m, nil
 			}
@@ -154,7 +155,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				response = fmt.Sprintf("encodable chars: %d | max hidden text: %d chars", encodableChars, maxLen)
 
 			default:
-				response = fmt.Sprintf("you: %s", val)
+				response = fmt.Sprintf("Select a mode", val)
 			}
 
 			m.messages = append(m.messages, response)
