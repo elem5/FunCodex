@@ -6,6 +6,7 @@ import (
 	"strings"
 	"golang.design/x/clipboard"
 
+	"github.com/Danyiyk/FunCodex/internal/config"
 	"github.com/Danyiyk/FunCodex/internal/decoder"
 	"github.com/Danyiyk/FunCodex/internal/encoder"
 	"github.com/Danyiyk/FunCodex/internal/utils"
@@ -16,6 +17,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+const asciiBanner = `
+██████ ▄▄ ▄▄ ▄▄  ▄▄ ▄█████  ▄▄▄  ▄▄▄▄  ▄▄▄▄▄ ▄▄ ▄▄ 
+██▄▄   ██ ██ ███▄██ ██     ██▀██ ██▀██ ██▄▄  ▀█▄█▀ 
+██     ▀███▀ ██ ▀██ ▀█████ ▀███▀ ████▀ ██▄▄▄ ██ ██ 
+`
 
 func PrintHelp() {
 	fmt.Println("Registered charmaps", len(utils.RegisteredCharmaps))
@@ -36,10 +43,11 @@ type model struct {
 	senderStyle lipgloss.Style
 	mode        string // active mode: "default", "encrypt", "decrypt", "length"
 	err         error
+	cfg         *config.Config
 }
 
 // initialize model
-func initialModel() model {
+func initialModel(cfg *config.Config) model {
 	ta := textarea.New()
 	ta.Placeholder = "type something..."
 	ta.Focus()
@@ -58,8 +66,18 @@ func initialModel() model {
 
 	// ascii art banner
 
-	vp := viewport.New(30, 5)
-vp.SetContent("Welcome to FunCodex!\nType a message and press Enter to send.")
+	vp := viewport.New(30, 10)
+
+	accent := lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.AccentColor))
+	banner := accent.Render(asciiBanner)
+
+	welcomeMsg := fmt.Sprintf(
+		"%s\n\nWelcome to %s!!\nSelect a mode, Type a message and press %s to send.",
+		banner,
+		accent.Render("FunCodex"),
+		accent.Render("[Enter]"),
+	)
+	vp.SetContent(welcomeMsg)
 
 	ta.KeyMap.InsertNewline.SetEnabled(false)
 
@@ -67,9 +85,10 @@ vp.SetContent("Welcome to FunCodex!\nType a message and press Enter to send.")
 		textarea:    ta,
 		messages:    []string{},
 		viewport:    vp,
-		senderStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("5")),
+		senderStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.AccentColor)),
 		mode:        "default",
 		err:         nil,
+		cfg:         cfg,
 	}
 }
 
@@ -100,23 +119,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		// switch mode
-		case "ctrl+d":
+		case m.cfg.Keybinds.DecryptMode:
 			m.mode = "decrypt"
-			m.messages = append(m.messages, m.senderStyle.Render("funcodex: ")+"mode set to decrypt")
+			m.messages = append(m.messages, m.senderStyle.Render("FunCodex: ")+"mode set to decrypt")
 			m.viewport.SetContent(lipgloss.NewStyle().Width(m.viewport.Width).Render(strings.Join(m.messages, "\n")))
 			m.viewport.GotoBottom()
 			return m, nil
 
-		case "ctrl+e":
+		case m.cfg.Keybinds.EncryptMode:
 			m.mode = "encrypt"
-			m.messages = append(m.messages, m.senderStyle.Render("funcodex: ")+"mode set to encrypt")
+			m.messages = append(m.messages, m.senderStyle.Render("FunCodex: ")+"mode set to encrypt")
 			m.viewport.SetContent(lipgloss.NewStyle().Width(m.viewport.Width).Render(strings.Join(m.messages, "\n")))
 			m.viewport.GotoBottom()
 			return m, nil
 
-		case "ctrl+l":
+		case m.cfg.Keybinds.Length:
 			m.mode = "length"
-			m.messages = append(m.messages, m.senderStyle.Render("funcodex: ")+"mode set to length")
+			m.messages = append(m.messages, m.senderStyle.Render("FunCodex: ")+"mode set to length")
 			m.viewport.SetContent(lipgloss.NewStyle().Width(m.viewport.Width).Render(strings.Join(m.messages, "\n")))
 			m.viewport.GotoBottom()
 			return m, nil
@@ -132,30 +151,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var response string
 
 			switch m.mode {
-			case "encrypt":
-				parts := strings.SplitN(val, "|", 2)
-				if len(parts) < 2 {
-					response = m.senderStyle.Render("funcodex: ") + "error: use format 'text | hidden_text'"
-				} else {
-					text := strings.TrimSpace(parts[0])
-					hiddenText := strings.TrimSpace(parts[1])
-					encodedResult := encoder.Encode(text, hiddenText)
+				case "encrypt":
+    sep := m.cfg.SeparatorCharacter
+    if sep == "" {
+        sep = "|"
+    }
+    parts := strings.SplitN(val, sep, 2)
+    if len(parts) < 2 {
+        response = m.senderStyle.Render("FunCodex: ") + fmt.Sprintf("error: use format 'text %s hidden_text'", sep)
+    } else {
+        text := strings.TrimSpace(parts[0])
+        hiddenText := strings.TrimSpace(parts[1])
+        encodedResult := encoder.Encode(text, hiddenText)
 
-					// copy result to clipboard (primary and standard)
-					copyToClipboard(encodedResult)
-
-					response = fmt.Sprintf("encrypted: %s", encodedResult)
-				}
+        if encodedResult == "" {
+            response = m.senderStyle.Render("FunCodex: ") + "Error: [ERROR]"
+        } else {
+            copyToClipboard(encodedResult)
+            response = m.senderStyle.Render("encrypted: ") + fmt.Sprintf(encodedResult)
+        }
+    }
 			case "decrypt":
 				decodedResult := decoder.Decode(val)
-				response = fmt.Sprintf("decrypted: %s", decodedResult)
+				response = m.senderStyle.Render("FunCodex: ") + fmt.Sprintf("decrypted: %s", decodedResult)
 
 			case "length":
 				encodableChars, maxLen := utils.GetAvailableSpace(val)
-				response = fmt.Sprintf("encodable chars: %d | max hidden text: %d chars", encodableChars, maxLen)
+				response = m.senderStyle.Render("FunCodex: ") + fmt.Sprintf("encodable chars: %d | max hidden text: %d chars", encodableChars, maxLen)
 
 			default:
-				response = fmt.Sprintf("Select a mode", val)
+				response = m.senderStyle.Render("FunCodex: ") + "Select a mode"
 			}
 
 			m.messages = append(m.messages, response)
@@ -181,19 +206,57 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // render view
 func (m model) View() string {
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	footer := helpStyle.Render("ctrl+e: encrypt • ctrl+d: decrypt • ctrl+l: length • esc: quit")
+	defaultStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	activeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.AccentColor)).Bold(true)
+
+	encryptLabel := fmt.Sprintf("%s: encrypt", m.cfg.Keybinds.EncryptMode)
+	decryptLabel := fmt.Sprintf("%s: decrypt", m.cfg.Keybinds.DecryptMode)
+	lengthLabel := fmt.Sprintf("%s: length", m.cfg.Keybinds.Length)
+	quitLabel := "esc: quit"
+
+	if m.mode == "encrypt" {
+		encryptLabel = activeStyle.Render(encryptLabel)
+	} else {
+		encryptLabel = defaultStyle.Render(encryptLabel)
+	}
+
+	if m.mode == "decrypt" {
+		decryptLabel = activeStyle.Render(decryptLabel)
+	} else {
+		decryptLabel = defaultStyle.Render(decryptLabel)
+	}
+
+	if m.mode == "length" {
+		lengthLabel = activeStyle.Render(lengthLabel)
+	} else {
+		lengthLabel = defaultStyle.Render(lengthLabel)
+	}
+
+	footer := fmt.Sprintf(
+		"%s • %s • %s • %s",
+		encryptLabel,
+		decryptLabel,
+		lengthLabel,
+		defaultStyle.Render(quitLabel),
+	)
 
 	return fmt.Sprintf("%s\n\n%s\n%s", m.viewport.View(), m.textarea.View(), footer)
 }
 
 func main() {
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to load config: %v\n", err)
+		defaultCfg := config.Default()
+		cfg = &defaultCfg
+	}
+
 	if err := clipboard.Init(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to init clipboard: %v\n", err)
 	}
 	// run tui if no flags passed
 	if len(os.Args) == 1 {
-		p := tea.NewProgram(initialModel(), tea.WithAltScreen())
+		p := tea.NewProgram(initialModel(cfg), tea.WithAltScreen())
 		if _, err := p.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "error starting tui: %v\n", err)
 			os.Exit(1)

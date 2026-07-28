@@ -46,13 +46,16 @@ func Encode(str string, hiddenText string) string {
 			hiddenTextBinary = append(hiddenTextBinary, utils.IntegerToBinary(found, utils.BitsPerCharacter))
 		} else {
 			fmt.Printf("[Warning] Invalid character in hidden string: %s\n", letter)
+			returnValue = ""
+			return returnValue
 		}
 	}
 
 	slices.Reverse(hiddenTextBinary)
 
 	if hiddenTextLength > maxCharacters {
-		fmt.Printf("[Warning] Hidden text is too long to be hidden in this string, it will be cut!")
+		returnValue = ""
+		return returnValue
 	}
 
 	var parsing [utils.BitsPerCharacter]int
