@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 type Config struct {
@@ -34,14 +35,28 @@ func Default() Config {
 }
 
 func Path() (string, error) {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return "", err
+	var dir string
+
+	if runtime.GOOS == "windows" {
+		dir = os.Getenv("LOCALAPPDATA")
+		if dir == "" {
+			var err error
+			dir, err = os.UserConfigDir()
+			if err != nil {
+				return "", err
+			}
+		}
+	} else {
+		var err error
+		dir, err = os.UserConfigDir()
+		if err != nil {
+			return "", err
+		}
 	}
 
 	return filepath.Join(
 		dir,
-		"funcodex",
+		"FunCodex",
 		"config.json",
 	), nil
 }
